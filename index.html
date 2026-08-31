@@ -908,7 +908,8 @@ async function exportData(){
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(aoa);
     XLSX.utils.book_append_sheet(wb,ws,'BioFeedback');
-    XLSX.writeFile(wb,fname);
+    const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    await saveBlob(new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),fname);
   }else{
     const lines=[EXPORT_FIELDS.join(',')];
     rows.forEach(r=>{
@@ -918,12 +919,25 @@ async function exportData(){
         return v;
       }).join(','));
     });
-    const blob=new Blob([lines.join('\n')],{type:'text/csv'});
-    saveBlob(blob,fname);
+    await saveBlob(new Blob([lines.join('\n')],{type:'text/csv'}),fname);
   }
   toast(`Exported ${rows.length} rows`,'success');
 }
-function saveBlob(blob,name){
+
+async function saveBlob(blob,name){
+  const file=new File([blob],name,{type:blob.type});
+  // Try native share sheet first (works in Bluefy / iOS WKWebView wrappers)
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:name});
+      return;
+    }catch(e){
+      // user cancelled share sheet — don't fall through to a confusing second download
+      if(e.name==='AbortError') return;
+      console.warn('share failed, falling back to download',e);
+    }
+  }
+  // Fallback: classic anchor download (works in Chrome/Edge/desktop/Android)
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=name;
   document.body.appendChild(a); a.click(); a.remove();
